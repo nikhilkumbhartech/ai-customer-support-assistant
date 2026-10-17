@@ -1,0 +1,159 @@
+# AI Customer Support & Knowledge Assistant
+
+A RAG-based customer support assistant that answers questions from company documents, streams responses token by token, and refuses to make up answers when the information isn't in the knowledge base.
+
+Built with **React**, **Node.js (Express)**, **FastAPI**, **Gemini** and **PostgreSQL**.
+
+## Features
+
+- **Retrieval-Augmented Generation (RAG)**: answers are grounded in retrieved document chunks, not the model's memory
+- **Semantic search** using local embeddings (top-k retrieval with a minimum similarity threshold)
+- **Hallucination control**: strict system prompt plus similarity-threshold refusal when no relevant context is found
+- **Streaming responses** over `/chat/stream` (server-sent events), ChatGPT-style
+- **Gemini function calling** via the Google GenAI SDK
+- **Retry with exponential backoff** for transient Gemini errors (HTTP 503)
+- **Conversation memory** so follow-up questions make sense
+- **Config via environment variables** (pydantic-settings)
+
+## Architecture
+
+```
+React (Vite)  ──►  Node.js + Express  ──►  FastAPI AI Service  ──►  Gemini
+ chat UI            auth, chat history,      embeddings, retrieval,     answer
+                    API gateway              RAG, streaming
+                                                   │
+                                                   ▼
+                                              PostgreSQL
+                                        (documents, chunks, chats)
+```
+
+### RAG flow
+
+**Ingestion (offline):**
+`Document → text extraction → cleaning → chunking (with overlap) → embeddings → PostgreSQL`
+
+**Query (online):**
+`Question → query embedding → similarity search → top-k chunks → prompt + context → Gemini → grounded answer`
+
+If the best match scores below the threshold, the assistant says the information isn't available instead of guessing.
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React, Vite |
+| Business backend | Node.js, Express |
+| AI service | FastAPI (Python), pydantic-settings |
+| LLM | Google Gemini (google-genai SDK) |
+| Embeddings | Local embedding model (Hugging Face weights) |
+| Database | PostgreSQL |
+| Infra | Docker Compose |
+
+## Project Structure
+
+```
+ai-support-assistant/
+├── frontend/             # React chat UI
+├── backend/              # Node.js + Express API
+├── ai-service/           # FastAPI RAG service
+├── ai/                   # AI experiments / scripts
+├── db/                   # Database setup
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- Python 3.10+
+- Docker (for PostgreSQL)
+- A Gemini API key from [Google AI Studio](https://aistudio.google.com/)
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/nikhilkumbhartech/ai-customer-support-Assistant.git
+cd ai-customer-support-Assistant
+```
+
+### 2. Configure environment variables
+
+Create a `.env` file in the project root (never commit it):
+
+```env
+GEMINI_API_KEY=your_key_here
+DATABASE_URL=postgresql://user:password@localhost:5433/support_ai
+```
+
+For the frontend, copy the example file:
+
+```bash
+cp frontend/.env.example frontend/.env
+```
+
+### 3. Start the database
+
+```bash
+docker-compose up -d
+```
+
+### 4. Run the AI service (FastAPI, port 8000)
+
+```bash
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS / Linux
+pip install -r requirements.txt
+cd ai-service
+uvicorn main:app --reload --port 8000
+```
+
+### 5. Run the backend (Node.js, port 5000)
+
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+### 6. Run the frontend (React, port 5173)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173).
+
+## API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/chat/stream` | Ask a question, receive a streamed grounded answer (FastAPI) |
+
+## RAG Configuration
+
+| Parameter | Value | Effect |
+|-----------|-------|--------|
+| `top_k` | 5 | Number of chunks sent to the LLM |
+| `min_score` | 0.30 | Minimum similarity; below this the assistant refuses |
+| Retries | 3 (1s / 2s / 4s backoff) | Handles temporary Gemini 503 errors |
+
+## Limitations & Future Work
+
+- No OCR support for scanned PDFs
+- Answer quality depends on retrieval quality
+- Add fallback Gemini models and longer retries for sustained 503s
+- Hybrid search (keyword + vector) and re-ranking
+- User feedback (thumbs up/down) for evaluation
+- RAG evaluation with a golden dataset (Recall@K, faithfulness)
+
+## Author
+
+**Nikhil Kumbhar**
+GitHub: [@nikhilkumbhartech](https://github.com/nikhilkumbhartech)
+Email: kumbharnikhil.tech@gmail.com
